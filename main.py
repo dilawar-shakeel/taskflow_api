@@ -1,13 +1,35 @@
-from fastapi import FastAPI, HTTPException ,status, Response
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException ,status, Response, Depends
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
+from sqlmodel import Field, Session, SQLModel, create_engine, select
+from contextlib import asynccontextmanager
+
+
 #------Custom Modules
 from pydantic_schemas import *
 
 
-# Initializing the main TaskFlow application
-app = FastAPI(title="TaskFlow API")
+# Setup the Engine (The Pipeline)
+DATABASE_URL = "postgresql://postgres:new_password_123@localhost:5432/taskflow-db"
+engine = create_engine(DATABASE_URL, echo=True)
 
+
+# On start
+@asynccontextmanager
+async def on_startup(app: FastAPI):
+
+    yield
+
+    print("Application is shutting down")
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
+# Initializing the main TaskFlow application
+app = FastAPI(title="TaskFlow API",lifespan=on_startup)
 
 
 # ==========================================
@@ -148,9 +170,21 @@ def check_duplicate_title(title: str, task_list: list) -> bool :
 # ==========================================
 
 
+
+class Task(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(index=True)
+    description: Optional[str] = None
+    is_completed: bool = Field(default=False)
+    priority: Priorityenum = Field(default="medium", min_length=3, max_length=6)
+    due_date: Optional[str] = None
+
+
+
 # ==========================================
 # 🛠️ CRUD ENDPOINTS - START
 # ==========================================
+
 
 
 # The Root Entrance Endpoint
@@ -165,9 +199,65 @@ async def read_root():
 
 
 
+@app.post("/v1/tasks", status_code=status.HTTP_201_CREATED, response_model=Task)
+async def createTask(task_in: Task, session: Session=Depends(get_session)):
+    session.add(task_in)
+    session.commit()
+    session.refresh(task_in)
+    return task_in
+
+@app.get("/v1/tasks", status_code=status.HTTP_200_OK,response_model=List[Task])
+async def get__all__task(is_completed: Optional[bool] = None ,session: Session=Depends(get_session)):
+    
+    if is_completed is not None:
+        statement = select(Task).where(Task.is_completed == is_completed)
+        result = session.exec(statement)
+        return result.all()
+
+    statement = select(Task)
+    result = session.exec(statement)
+    return result.all()
+
+@app.get("/v1/tasks/{task_id}", status_code=status.HTTP_200_OK, response_model=Task)
+async def get__one__task(task_id: int, session: Session=Depends(get_session)):
+
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task with {task_id} Not Found")
+    return task
+
+@app.patch("/v1/tasks/{task_id}", status_code=status.HTTP_200_OK, response_model=Task)
+async def get__one__task(task_id: int, update_data: Task , session: Session=Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    
+    data_dict =update_data.model_dump(exclude_unset=True)
+
+    for key, value in data_dict.items():
+        if key != "id":
+            setattr(task, key, value)
+
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task        
+
+@app.delete("/v1/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def del_new(task_id: int, session: Session=Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    session.delete(task)
+    session.commit()
+    return 
+
+
+
+
 # CREATE (POST) - 201 CREATED
 @app.post("/tasks", status_code=status.HTTP_201_CREATED, response_model=TaskRead)
-async def create_task(task_in: TaskCreate):
+async def create_task(task_in: TaskCreate, session: Session=Depends(get_session)):
 
     if not check_duplicate_title(task_in.title, MOCK_TASKS):
         return Response(status_code=status.HTTP_409_CONFLICT)
@@ -186,8 +276,11 @@ async def create_task(task_in: TaskCreate):
         "is_urgent": task_in.is_urgent,
         "due_date": task_in.due_date
     }
-    MOCK_TASKS.append(new_task)
-    return new_task
+    # MOCK_TASKS.append(new_task)
+    session.add(task_in)
+    session.commit()
+    session.refresh(task_in)
+    return task_in
 
 
 

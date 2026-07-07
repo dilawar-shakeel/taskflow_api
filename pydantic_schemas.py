@@ -1,17 +1,25 @@
 from datetime import date, datetime
 from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator
+from sqlmodel import Field, Session, SQLModel, create_engine, select
+from typing import List, Optional
 
 
 #---------------------| Start of OUTBOUND / INBOUND Schemas |---------------------
 
-#Inbound Schema: What we require when creating a Task
-class TaskCreate(BaseModel):
+
+class TaskBase(SQLModel):
     title: str = Field(min_length=3,max_length=100)
     description: str | None = Field(default=None, max_length=500)
     priority: str = Field(default="low", min_length=3, max_length=6)
     task_status: str = Field(default="todo", min_length=4, max_length=10)
     is_urgent: bool = Field(default=False)
-    due_date: date
+    due_date: date    
+
+
+
+#Inbound Schema: What we require when creating a Task
+class TaskCreate(TaskBase):
+    id: Optional[int] =Field(default=None, primary_key=True)
 
     @field_validator("due_date")
     @classmethod
@@ -40,6 +48,7 @@ class TaskCreate(BaseModel):
             raise ValueError("Tasks marked as an Emergency must have the 'is_urgent' flag set to True.")
         return self        
 
+
 #Inbound Schema: What we allow when UPDATING a Task(Partial Modificaiton)
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=3,max_length=100)
@@ -49,7 +58,7 @@ class TaskUpdate(BaseModel):
     task_status: str | None = Field(default=None)
 
 #Outbound Schema: what the user will Read
-class TaskRead(BaseModel):
+class TaskRead(TaskBase):
     id: int
     title: str
     description: str | None = None
@@ -70,6 +79,7 @@ class Tag(BaseModel):
     color: str = Field(default="#FFFFFF")
 
 class Task(BaseModel):
+    
     title: str = Field(
         min_length=3, 
         max_length=100, 
