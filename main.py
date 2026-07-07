@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException ,status, Response, Depends
 from pydantic import BaseModel, EmailStr, Field
@@ -11,7 +13,7 @@ from pydantic_schemas import *
 
 
 # Setup the Engine (The Pipeline)
-DATABASE_URL = "postgresql://postgres:new_password_123@localhost:5432/taskflow-db"
+DATABASE_URL =  os.getenv(DATABASE_URL)
 engine = create_engine(DATABASE_URL, echo=True)
 
 
