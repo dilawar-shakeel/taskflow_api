@@ -13,7 +13,8 @@ from pydantic_schemas import *
 
 
 # Setup the Engine (The Pipeline)
-DATABASE_URL =  os.getenv(DATABASE_URL)
+load_dotenv("secret.env")
+DATABASE_URL =  os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL, echo=True)
 
 
@@ -26,8 +27,14 @@ async def on_startup(app: FastAPI):
     print("Application is shutting down")
 
 def get_session():
-    with Session(engine) as session:
+    session = Session(engine)
+    try:
+        print("DB Session Opened....!")
         yield session
+    finally:
+        session.close() # <-- Runs manually
+        print("DB Session Safely Closed")  # <-- GUARANTEED TO RUN ON CRASH
+
 
 
 # Initializing the main TaskFlow application
@@ -198,7 +205,6 @@ async def read_root():
         "version": "1.0.0",
         "status": "Online"
     }
-
 
 
 @app.post("/v1/tasks", status_code=status.HTTP_201_CREATED, response_model=Task)
